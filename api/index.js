@@ -62,11 +62,20 @@ app.post('/api/exchange-token', async (req, res) => {
     const psuErrorReason = error.response?.data || error.message;
     console.error('OAuth Error From PSU:', psuErrorReason);
 
+    // ดึงค่ามาเช็คสถานะการมีอยู่ของตัวแปรระบบ (ได้ผลลัพธ์เป็น true หรือ false)
+    const hasClientId = !!process.env.PSU_CLIENT_ID;
+    const hasClientSecret = !!process.env.PSU_CLIENT_SECRET;
+
     return res.status(400).json({ 
       error: "No access token returned from PSU", 
-      details: psuErrorReason 
+      debug_backend_env: {
+        is_PSU_CLIENT_ID_loaded: hasClientId,     // จะตอบ true หรือ false
+        is_PSU_CLIENT_SECRET_loaded: hasClientSecret, // จะตอบ true หรือ false
+        vercel_current_env: process.env.NODE_ENV || "unknown"
+      },
+      psu_api_response: psuErrorReason
     });
-    
+
     // return res.status(500).json({
     //   error: 'Failed to exchange token',
     //   details: error.response?.data || error.message
