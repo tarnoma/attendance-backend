@@ -8,8 +8,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Test route
+app.get('/', (req, res) => {
+  res.send({ message: 'Hello, Attendace Application API is working.' });
+});
+
 // API Route สำหรับแลก Token และดึงโปรไฟล์ผู้ใช้
 app.post('/api/exchange-token', async (req, res) => {
+  console.log("=== Incoming Data from Frontend ===", req.body);
   const { code, redirectUri, clientId, clientSecret } = req.body;
 
   try {
@@ -49,6 +55,11 @@ app.post('/api/exchange-token', async (req, res) => {
       details: error.response?.data || error.message
     });
   }
+});
+
+// Basic error handling for routes not found
+app.use((req, res, next) => {
+    res.status(404).send({ message: "Route not found" });
 });
 
 // เปิด Port เผื่อกรณีทดสอบในเครื่อง local (ถ้า deploy ขึ้น vercel บรรทัดนี้จะถูกละเว้นอัตโนมัติ)
