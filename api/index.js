@@ -21,6 +21,9 @@ app.post('/api/exchange-token', async (req, res) => {
   try {
     const tokenUrl = 'https://psusso.psu.ac.th/application/o/pkt-attendance-0504/token/';
 
+    const clientId = process.env.PSU_CLIENT_ID;
+    const clientSecret = process.env.PSU_CLIENT_SECRET;
+
     const params = new URLSearchParams();
     params.append('grant_type', 'authorization_code');
     params.append('code', code);
@@ -56,11 +59,18 @@ app.post('/api/exchange-token', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('OAuth Error:', error.response?.data || error.message);
-    return res.status(500).json({
-      error: 'Failed to exchange token',
-      details: error.response?.data || error.message
+    const psuErrorReason = error.response?.data || error.message;
+    console.error('OAuth Error From PSU:', psuErrorReason);
+
+    return res.status(400).json({ 
+      error: "No access token returned from PSU", 
+      details: psuErrorReason 
     });
+    
+    // return res.status(500).json({
+    //   error: 'Failed to exchange token',
+    //   details: error.response?.data || error.message
+    // });
   }
 });
 
