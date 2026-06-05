@@ -4,45 +4,51 @@ const axios = require('axios');
 
 const app = express();
 
-// เปิดให้ Quasar ยิงมาหา Vercel ได้โดยไม่ติด CORS
+// เปิดใช้งาน CORS ให้เว็บแอป Quasar ยิงมาใช้งานได้โดยไม่ติด CORS
 app.use(cors());
 app.use(express.json());
 
+// Test route
 app.get('/', (req, res) => {
   res.send({ message: 'Hello, Attendance Application API is working.' });
 });
 
+// API Route สำหรับแลก Token และดึงโปรไฟล์ผู้ใช้
 app.post('/api/exchange-token', async (req, res) => {
-  console.log("=== Incoming request to Vercel ===", req.body);
+  console.log("=== Incoming Dataจาก Quasar Frontend ===", req.body);
   const { code, redirectUri } = req.body;
 
   try {
     const tokenUrl = 'https://psusso.psu.ac.th/application/o/pkt-attendance-0504/token/';
-    
+
     const clientId = process.env.PSU_CLIENT_ID;
     const clientSecret = process.env.PSU_CLIENT_SECRET;
 
-    // เตรียมข้อมูลแบบ x-www-form-urlencoded
-    const params = new URLSearchParams();
-    params.append('grant_type', 'authorization_code');
-    params.append('code', code);
-    params.append('redirect_uri', redirectUri);
-    params.append('client_id', clientId);
-    params.append('client_secret', clientSecret);
+    // 1. จัดเตรียมข้อมูลในรูปแบบ Object ทั่วไปตามที่ Axios และคู่มือมหาลัยเรียกใช้
+    const requestData = {
+      grant_type: 'authorization_code',
+      code: code,
+      redirect_uri: redirectUri,
+      client_id: clientId,
+      client_secret: clientSecret
+    };
 
-    // จุดสำคัญ: แนบ Headers เพื่อบอก Incapsula ว่าเรายิงมาจาก Google Hosting ที่มหาลัยอนุมัติไว้
-    const tokenResponse = await axios.post(tokenUrl, params.toString(), {
-      headers: { 
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Origin': 'https://attendance-0504.web.app',
-        'Referer': 'https://attendance-0504.web.app/',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    // 2. ยิงแลก Token โดยใช้การแปลงแบบพารามิเตอร์เพื่อให้ฝั่งมหาลัยอ่านค่าได้ราบรื่น
+    const tokenResponse = await axios.post(
+      tokenUrl, 
+      new URLSearchParams(requestData).toString(), 
+      {
+        headers: { 
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Origin': 'https://attendance-0504.web.app',
+          'Referer': 'https://attendance-0504.web.app/'
+        }
       }
-    });
+    );
 
     const tokens = tokenResponse.data;
 
-    // ถ้าแลก Token สำเร็จ ให้ดึงประวัติผู้ใช้ต่อบนเซิร์ฟเวอร์ทันที
+    // 3. ถ้าได้ access_token มาแล้ว ให้ลุยดึงโปรไฟล์ต่อทันทีเพื่อความเบ็ดเสร็จ
     if (tokens && tokens.access_token) {
       const userUrl = 'https://psusso.psu.ac.th/application/o/pkt-attendance-0504/userinfo/';
       
@@ -53,22 +59,39 @@ app.post('/api/exchange-token', async (req, res) => {
         }
       });
       
-      // ส่งข้อมูลโปรไฟล์กลับไปให้ Quasar หน้าบ้าน
+      // ส่งข้อมูล User Profile สำเร็จกลับไปให้ Quasar หน้าบ้านใช้งาน
       return res.json(userResponse.data);
     } else {
       return res.status(400).json({ error: "No access token returned from PSU", raw_data: tokens });
     }
 
   } catch (error) {
-    // ดักดูว่าถ้ารอบนี้ไม่ผ่าน Firewall พ่นอะไรตอบกลับมา
     const psuErrorReason = error.response?.data || error.message;
-    console.error('OAuth Error:', psuErrorReason);
+    console.error('OAuth Error From PSU:', psuErrorReason);
+
+    const hasClientId = !!process.env.PSU_CLIENT_ID;
+    const hasClientSecret = !!process.env.PSU_CLIENT_SECRET; 
 
     return res.status(400).json({ 
       error: "No access token returned from PSU", 
+      debug_backend_env: {
+        is_PSU_CLIENT_ID_loaded: hasClientId,
+        is_PSU_CLIENT_SECRET_loaded: hasClientSecret,
+        vercel_current_env: process.env.NODE_ENV || "unknown"
+      },
       psu_api_response: psuErrorReason
     });
   }
 });
+
+// Basic error handling
+app.use((req, res, next) => {
+  res.status(404).send({ message: "Route not found" });
+});
+
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = 3000;
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}
 
 module.exports = app;
