@@ -40,8 +40,16 @@ app.post('/api/exchange-token', async (req, res) => {
 
     const tokens = tokenResponse.data;
 
-    if (!tokens.access_token) {
-      return res.status(400).json({ error: 'No access token returned from PSU' });
+    // if (!tokens.access_token) {
+    //   return res.status(400).json({ error: 'No access token returned from PSU' });
+    // }
+    // ปรับแก้ตรงจุดนี้: ถ้าไม่มี access_token ให้ส่งข้อมูลทั้งหมดที่ PSU ตอบกลับมาให้เราดูใน Postman ทันที!
+    if (!tokens || !tokens.access_token) {
+      return res.status(400).json({ 
+        error: "No access token returned from PSU",
+        reason: "PSU ตอบกลับสำเร็จแต่ไม่มี access_token",
+        what_psu_responded: tokens // พ่นออบเจกต์ทั้งหมดที่ PSU ส่งมาดูหน่อย
+      });
     }
 
     // 3. นำ access_token ที่ได้ ยิงไปดึงข้อมูล User Info เพื่อเอาชื่อ-นามสกุล/รหัสนักศึกษา ต่อทันที
