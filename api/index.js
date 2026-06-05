@@ -4,28 +4,25 @@ const axios = require('axios');
 
 const app = express();
 
+// เปิดให้ Quasar ยิงมาหา Vercel ได้โดยไม่ติด CORS
 app.use(cors());
 app.use(express.json());
 
-// Test route
 app.get('/', (req, res) => {
   res.send({ message: 'Hello, Attendance Application API is working.' });
 });
 
-// API Route สำหรับแลก Token และดึงโปรไฟล์ผู้ใช้
 app.post('/api/exchange-token', async (req, res) => {
-  console.log("=== Incoming Data from Frontend ===", req.body);
+  console.log("=== Incoming request to Vercel ===", req.body);
   const { code, redirectUri } = req.body;
 
   try {
     const tokenUrl = 'https://psusso.psu.ac.th/application/o/pkt-attendance-0504/token/';
-    const userUrl = 'https://psusso.psu.ac.th/application/o/pkt-attendance-0504/userinfo/';
-
-    // ดึงรหัสผ่านลับจากระบบ Vercel Settings ป้องกันรหัสหลุด
+    
     const clientId = process.env.PSU_CLIENT_ID;
     const clientSecret = process.env.PSU_CLIENT_SECRET;
 
-    // 1. จัดเตรียมข้อมูลในรูปแบบ x-www-form-urlencoded ตามมาตรฐาน OpenID ของ PSU
+    // เตรียมข้อมูลแบบ x-www-form-urlencoded
     const params = new URLSearchParams();
     params.append('grant_type', 'authorization_code');
     params.append('code', code);
@@ -33,61 +30,45 @@ app.post('/api/exchange-token', async (req, res) => {
     params.append('client_id', clientId);
     params.append('client_secret', clientSecret);
 
-    // 2. ยิงแลก Access Token กับทางเซิร์ฟเวอร์ PSU
+    // จุดสำคัญ: แนบ Headers เพื่อบอก Incapsula ว่าเรายิงมาจาก Google Hosting ที่มหาลัยอนุมัติไว้
     const tokenResponse = await axios.post(tokenUrl, params.toString(), {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': 'https://attendance-0504.web.app',
+        'Referer': 'https://attendance-0504.web.app/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
     });
 
     const tokens = tokenResponse.data;
 
-    // if (!tokens.access_token) {
-    //   return res.status(400).json({ error: 'No access token returned from PSU' });
-    // }
-    // ปรับแก้ตรงจุดนี้: ถ้าไม่มี access_token ให้ส่งข้อมูลทั้งหมดที่ PSU ตอบกลับมาให้เราดูใน Postman ทันที!
-    if (!tokens || !tokens.access_token) {
-      return res.status(400).json({ 
-        error: "No access token returned from PSU",
-        reason: "PSU ตอบกลับสำเร็จแต่ไม่มี access_token",
-        what_psu_responded: tokens // พ่นออบเจกต์ทั้งหมดที่ PSU ส่งมาดูหน่อย
+    // ถ้าแลก Token สำเร็จ ให้ดึงประวัติผู้ใช้ต่อบนเซิร์ฟเวอร์ทันที
+    if (tokens && tokens.access_token) {
+      const userUrl = 'https://psusso.psu.ac.th/application/o/pkt-attendance-0504/userinfo/';
+      
+      const userResponse = await axios.get(userUrl, {
+        headers: { 
+          'Authorization': `Bearer ${tokens.access_token}`,
+          'Origin': 'https://attendance-0504.web.app'
+        }
       });
+      
+      // ส่งข้อมูลโปรไฟล์กลับไปให้ Quasar หน้าบ้าน
+      return res.json(userResponse.data);
+    } else {
+      return res.status(400).json({ error: "No access token returned from PSU", raw_data: tokens });
     }
 
-    // 3. นำ access_token ที่ได้ ยิงไปดึงข้อมูล User Info เพื่อเอาชื่อ-นามสกุล/รหัสนักศึกษา ต่อทันที
-    const userResponse = await axios.get(userUrl, {
-      headers: { 'Authorization': `Bearer ${tokens.access_token}` }
-    });
-
-    // 4. ส่งข้อมูลโปรไฟล์ผู้ใช้จริงกลับไปให้ฝั่ง Quasar Frontend ใช้งานเปิดระบบเช็คชื่อ
-    return res.json(userResponse.data);
-
   } catch (error) {
+    // ดักดูว่าถ้ารอบนี้ไม่ผ่าน Firewall พ่นอะไรตอบกลับมา
     const psuErrorReason = error.response?.data || error.message;
-    console.error('OAuth Error From PSU:', psuErrorReason);
+    console.error('OAuth Error:', psuErrorReason);
 
-    const hasClientId = !!process.env.PSU_CLIENT_ID;
-    const hasClientSecret = !!process.env.PSU_CLIENT_SECRET; 
-
-    // พ่น Log ละเอียดกรณีที่ PSU ตรวจข้อมูลไม่ผ่าน เพื่อให้หน้าบ้านแก้ไขได้ง่าย
     return res.status(400).json({ 
       error: "No access token returned from PSU", 
-      debug_backend_env: {
-        is_PSU_CLIENT_ID_loaded: hasClientId,
-        is_PSU_CLIENT_SECRET_loaded: hasClientSecret,
-        vercel_current_env: process.env.NODE_ENV || "unknown"
-      },
       psu_api_response: psuErrorReason
     });
   }
 });
-
-// Basic error handling for routes not found
-app.use((req, res, next) => {
-  res.status(404).send({ message: "Route not found" });
-});
-
-if (process.env.NODE_ENV !== 'production') {
-  const PORT = 3000;
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-}
 
 module.exports = app;
