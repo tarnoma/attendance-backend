@@ -15,6 +15,16 @@ app.get('/', (req, res) => {
 
 // API Route สำหรับแลก Token และดึงโปรไฟล์ผู้ใช้
 app.post('/api/exchange-token', async (req, res) => {
+  return res.json({
+    message: "--- บังคับเช็คเวอร์ชันโค้ดบนเซิร์ฟเวอร์ Vercel ---",
+    status: "เชื่อมต่อสำเร็จ โค้ดถูกอัปเดตเป็นตัวล่าสุดแล้ว",
+    check_variables_in_settings: {
+      is_PSU_CLIENT_ID_found: !!process.env.PSU_CLIENT_ID,
+      is_PSU_CLIENT_SECRET_found: !!process.env.PSU_CLIENT_SECRET
+    },
+    what_frontend_sent: req.body // ขอดูของที่ Postman ส่งมาด้วย
+  });
+  
   console.log("=== Incoming Data from Frontend ===", req.body);
   const { code, redirectUri, clientId, clientSecret } = req.body;
 
